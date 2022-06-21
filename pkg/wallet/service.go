@@ -2,7 +2,13 @@ package wallet
 
 import (
 	"Lesson17_ful_export/pkg/types"
+	"bufio"
 	"errors"
+	"io"
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -122,11 +128,132 @@ func (s *Service) PayFromFavorite(favoriteID string) (*types.Payment, error) {
 	}
 	return s.Pay(favorite.AccountId, favorite.Category, favorite.Amount)
 }
+
+//Возврашает true если в Service есть данный
 func (s *Service) IsServiceEmpty() (bool, bool, bool) {
-	return len(s.accounts) == 0, len(s.payments) == 0, len(s.favorites) == 0
+	return len(s.accounts) > 0, len(s.payments) > 0, len(s.favorites) > 0
 }
 
-//UpdateService обновляет сервис аккаунт с указыном Id если нет то создаёт новый аккаунт
+//UpdateService обновляет сервис аккаунт с указыном Id если нет то создаёт новый аккаунт с указыном данный
 func (s *Service) UpdateServiceAccount(account *types.Account) {
+	acc, err := s.FindAccountById(account.ID)
+	if err != nil {
+		s.nextAccountId++
+		accountNew := &types.Account{
+			ID:      s.nextAccountId,
+			Phone:   account.Phone,
+			Balance: account.Balance,
+		}
+		s.accounts = append(s.accounts, accountNew)
+	}
+	acc.Balance = account.Balance
+	acc.Phone = account.Phone
+}
+func (s *Service) UpdateServicePayment(payment *types.Payment) {
+	paym, err := s.FindPaymentById(payment.ID)
+	if err != nil {
+		s.payments = append(s.payments, payment)
+	}
+	paym.Amount = payment.Amount
+	paym.Category = payment.Category
+	paym.Status = payment.Status
+}
+func (s *Service) UpdateServiceFavorite(favorite *types.Favorite) {
+	fav, err := s.FindPaymentById(favorite.ID)
+	if err != nil {
+		s.favorites = append(s.favorites, favorite)
+	}
+	fav.Amount = favorite.Amount
+	fav.Category = favorite.Category
+}
+func (s *Service) Export(dir string) error {
+	a, p, f := s.IsServiceEmpty()
+	if a {
+		var result string
+		for _, acc := range s.accounts {
+			result += strconv.Itoa(int(acc.ID)) + " " + string(acc.Phone) + " " + strconv.Itoa(int(acc.Balance)) + ";\n"
+		}
+		dir += "/accounts.dump"
+		err := ioutil.WriteFile(dir, []byte(result), 0666)
+		if err != nil {
+			return err
+		}
+	}
+	if p {
+		var result string
+		for _, payment := range s.payments {
+			result += string(payment.ID) + " " + strconv.Itoa(int(payment.AccountID)) + " " + strconv.Itoa(int(payment.Amount))
+			result += " " + string(payment.Category) + " " + string(payment.Status) + ";\n"
+		}
+		dir += "/payments.dump"
+		err := ioutil.WriteFile(dir, []byte(result), 0666)
+		if err != nil {
+			return err
+		}
+	}
+	if f {
+		var result string
+		for _, favorite := range s.favorites {
+			result += string(favorite.ID) + " " + strconv.Itoa(int(favorite.AccountId)) + " " + favorite.Name + " "
+			result += strconv.Itoa(int(favorite.Amount)) + string(favorite.Category) + ";\n"
+		}
+		dir += "/favorites.dump"
+		err := ioutil.WriteFile(dir, []byte(result), 0666)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (s *Service) Import(dir string) error {
+	a, p, f := s.IsServiceEmpty()
+	if a {
+		dir += "/accounts.dump"
+		err := s.ImportFromFile(dir)
+		if err != nil {
+			return err
+		}
+	}
+	if p {
+		dir += "/payments.dump"
+		err := s.ImportFromFile(dir)
+		if err != nil {
+			return err
+		}
+	}
+	if f {
+		dir += "/favorites.dump"
+		err := s.ImportFromFile(dir)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 
+}
+func (s *Service) ImportFromFile(path string) error {
+	src, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := src.Close(); cerr != nil {
+			if err == nil {
+				err = cerr
+			}
+		}
+	}()
+	reader := bufio.NewReader(src)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		if err == io.EOF {
+			log.Print(line)
+			break
+		}
+		log.Print(line)
+	}
+	return nil
 }
